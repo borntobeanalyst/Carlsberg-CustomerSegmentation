@@ -1,0 +1,182 @@
+---
+title: "PAM Clustering"
+author: "Carlsberg A1"
+date: "21/05/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup library, include = FALSE}
+library(dplyr)
+library(tidyverse)
+library(car)
+library(ggplot2)
+library(lubridate)
+library(readxl)
+library(janitor)
+library(GGally)
+library(ggthemes)
+library(cluster)
+library(Hmisc)
+library(factoextra)
+library(Rtsne)
+library(kmed)
+```
+
+## Load the dataset
+```{r load the library, message = FALSE, warning = FALSE}
+#customer <- read_xlsx('newest_customer.xlsx')
+setwd("/Users/suzi/Desktop/Term1 - LBS/LAB/7th_week_work")
+customer <- read_xlsx('20200523_customer.xlsx')
+```
+
+## Multicollinearity check
+```{r}
+customer %>% 
+  select(-starts_with('b'), -c(1:30)) %>% 
+  ggcorr(method = c("pairwise", "pearson"), layout.exp = 3, label_round=1, label = TRUE,label_size = 2, hjust = 1)
+```
+
+## Data Preparation
+```{r dataset preparation, message = FALSE, warning = FALSE}
+#prepare the dataset for the clustering
+cust_df <- customer %>%
+    select(avg_con_monthly, ci_craft_prop_beers, ci_craft_prop_con, ci_lager_prop_beers, ci_lager_prop_con, ci_specialties_prop_beers, ci_specialties_prop_con, number_of_brands, med_income, total_pop_in_city, sd, male_perc, he_she_consumes_beer_everyday, glasses_of_wine_a_day, persons_aged_11_years_and_over_who_consume_beer, everyday_social_per_100, never_social_per_100, rating, center_or_not, c(near_basketball:near_university), outdoor_seating, main_classification, -near_football) %>% 
+  drop_na()
+
+cust_df$center_or_not <- as.factor(cust_df$center_or_not)
+cust_df$main_classification <- as.factor(cust_df$main_classification)
+cust_df$near_basketball <- as.factor(cust_df$near_basketball)
+cust_df$near_cinema <- as.factor(cust_df$near_cinema)
+cust_df$near_neighborhood <- as.factor(cust_df$near_neighborhood)
+cust_df$near_shopping <- as.factor(cust_df$near_shopping)
+cust_df$near_theatre <- as.factor(cust_df$near_theatre)
+cust_df$near_tourist <- as.factor(cust_df$near_tourist)
+cust_df$near_university <- as.factor(cust_df$near_university)
+cust_df$outdoor_seating <- as.factor(cust_df$outdoor_seating)
+cust_df$rating <- as.numeric(cust_df$rating)
+
+#scale the numbers for the sake of visualisation of numerical variables
+cust_df[,1:18] <- scale(cust_df[,1:18])
+```
+
+## Silhouette Analysis (decide # of clusters)
+```{r Silhouette, message = FALSE, warning = FALSE}
+dist <- daisy(cust_df, metric = c("gower"))
+
+sil_width <- c(NA)
+for(i in 2:8){  
+  pam_fit <- pam(dist, diss = TRUE, k = i)  
+  sil_width[i] <- pam_fit$silinfo$avg.width  
+}
+plot(1:8, sil_width,
+     xlab = "Number of clusters",
+     ylab = "Silhouette Width")
+lines(1:8, sil_width)
+```
+
+## Gower distance - without city (using proxy - number of populations)
+```{r PAM, message = FALSE, warning = FALSE}
+pam <- pam(dist, diss = T,2)
+sil <- silhouette(pam$clustering, dist)
+plot(sil)
+
+pam_results <- cust_df %>%
+  mutate(cluster = pam$clustering) %>%
+  group_by(cluster) %>%
+  do(the_summary = summary(.))
+
+pam_results$the_sumrye
+```
+
+## PAM (k=2) - graphics
+```{r visualisation, message = FALSE, warning = FALSE}
+tsne_obj <- Rtsne(dist, is_distance = TRUE)
+
+tsne_data <- tsne_obj$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(pam$clustering))
+
+ggplot(aes(x = X, y = Y), data = tsne_data) +
+  geom_point(aes(color = cluster))
+```
+
+## PAM (k=2) - graphics (only with numeric variables)
+```{r visualisation2, message = FALSE, warning = FALSE}
+cust_df$cluster <- as.factor(pam$clustering)
+center_locations <- cust_df[,c(1:18,29)] %>% filter(!is.na(rating)) %>% group_by(cluster) %>% summarize_all(mean)
+temp <- center_locations %>% gather(key = 'variable', value = 'value', -cluster, factor_key = TRUE)
+
+pam2_gg <- temp %>% 
+  ggplot(aes(x = variable, y = value, order = cluster))+
+  geom_line(aes(color = cluster, group = cluster), linetype = 'dashed', size = 1)+
+  geom_point(size = 2, shape = 4)+
+  ggtitle("PAM K = 2")+
+  labs(fill = 'cluster')+
+  theme(text = element_text(size=10),axis.text.x = element_text(angle=45, hjust=1),legend.title=element_text(size=5),legend.text = element_text(size=5))+
+  scale_color_manual(values = c("green", "orange", "red", "blue","purple"))
+
+pam2_gg
+```
+
+## Feature Importance (k=2)
+```{r feature importance 1}
+cust_df <- as.data.frame(cust_df)
+barplotnum(cust_df[,1:17], pam$clustering, alpha = 0.05)
+```
+
+# 5 Clusters
+## Gower distance - without city (using proxy - population #)
+```{r 5 clusters - silhouette plot and summary}
+pam5 <- pam(dist, diss = T,5)
+sil5 <- silhouette(pam5$clustering, dist)
+plot(sil5)
+
+pam_results5 <- cust_df %>%
+  mutate(cluster = pam5$clustering) %>%
+  group_by(cluster) %>%
+  do(the_summary = summary(.))
+
+pam_results5$the_summary
+```
+
+## PAM (k=5) - graphics
+```{r visualisation1 for 5 segments, message = FALSE, warning = FALSE}
+tsne_obj <- Rtsne(dist, is_distance = TRUE)
+
+tsne_data <- tsne_obj$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(pam5$clustering))
+
+ggplot(aes(x = X, y = Y), data = tsne_data) +
+  geom_point(aes(color = cluster))
+```
+
+## PAM (k=5) - graphics (only with numeric variables)
+```{r visualisation2 for 5 segments, message = FALSE, warning = FALSE}
+cust_df$cluster5 <- as.factor(pam5$clustering)
+center_locations <- cust_df[,c(1:18,30)] %>% filter(!is.na(rating)) %>% group_by(cluster5) %>% summarize_all(mean)
+temp <- center_locations %>% gather(key = 'variable', value = 'value', -cluster5, factor_key = TRUE)
+
+pam5_gg <- temp %>% 
+  ggplot(aes(x = variable, y = value, order = cluster5))+
+  geom_line(aes(color = cluster5, group = cluster5), linetype = 'dashed', size = 1)+
+  geom_point(size = 2, shape = 4)+
+  ggtitle("PAM K = 5")+
+  labs(fill = 'cluster5')+
+  theme(text = element_text(size=10),axis.text.x = element_text(angle=45, hjust=1),legend.title=element_text(size=5),legend.text = element_text(size=5))+
+  scale_color_manual(values = c("green", "orange", "red", "blue","purple"))
+
+pam5_gg
+```
+
+## Feature Importance (k=5)
+```{r feature importance 2}
+cust_df <- as.data.frame(cust_df)
+barplotnum(cust_df[,1:17], pam5$clustering, alpha = 0.05)
+```
