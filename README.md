@@ -11,3 +11,6 @@ Since I can't expose the details of the dataset itself, I did not upload the ori
 There are several ways to create clusters in machine learning area. The examples are: Hierarchical clustering, K-means clustering, K-nearest neighbors(KNN) algorithm, and PAM clustering.
 
 Firstly, our team chose trying K-means clustering (unsupervised clustering) as we had not enough data to train the algorithm and labeled customer segmentations yet (supervised clustering). However, we soon realized that K-means clustering does not support the categorical variables and uses and changed the clustering method to PAM(Partioning Around Medoids) clustering which supports both numerical and categorical variables.
+
+Using PAM and silhouette analysis, we decided the number of clusters and analysed the features of each customer segment. We can apply the similar analytical methods  
+to other data including customer behaviour information for customer segmentation anaylsis.
